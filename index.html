@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Corta Vídeo PRO</title>
+    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: white;
+            margin: 0;
+            padding: 15px;
+        }
+      .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #2d2d2d;
+            padding: 20px;
+            border-radius: 16px;
+        }
+        h1 { text-align: center; font-size: 22px; margin-bottom: 20px; }
+      .tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 20px;
+        }
+      .tab {
+            flex: 1;
+            padding: 10px;
+            background: #3d3d3d;
+            border: none;
+            color: #aaa;
+            border-radius: 8px 8px 0 0;
+            cursor: pointer;
+        }
+      .tab.ativo {
+            background: #007bff;
+            color: white;
+        }
+        input[type="file"] {
+            width: 100%;
+            padding: 12px;
+            background: #3d3d3d;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            box-sizing: border-box;
+        }
+        video, img {
+            width: 100%;
+            border-radius: 8px;
+            margin: 15px 0;
+            background: black;
+        }
+      .controles {
+            display: flex;
+            gap: 10px;
+            margin: 15px 0;
+        }
+      .controles input {
+            flex: 1;
+            padding: 10px;
+            border-radius: 8px;
+            border: none;
+            background: #3d3d3d;
+            color: white;
+            text-align: center;
+        }
+        button {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        #processarBtn { background: #007bff; color: white; }
+        #processarBtn:disabled { background: #555; }
+      .btn-download { background: #28a745; color: white; display: none; text-decoration: none; text-align: center; }
+        #status { margin-top: 15px; font-size: 14px; color: #aaa; text-align: center; }
+      .aba { display: none; }
+      .aba.ativa { display: block; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Corta Vídeo PRO ✂️</h1>
+
+        <div class="tabs">
+            <button class="tab ativo" onclick="mudarAba('corte')">Cortar Vídeo</button>
+            <button class="tab" onclick="mudarAba('audio')">Extrair Áudio</button>
+            <button class="tab" onclick="mudarAba('gif')">Criar GIF</button>
+        </div>
+
+        <input type="file" id="inputVideo" accept="video/*">
+        <video id="preview" controls></video>
+        <img id="previewGif" style="display:none;">
+
+        <!-- ABA CORTAR VÍDEO -->
+        <div id="aba-corte" class="aba ativa">
+            <div class="controles">
+                <input type="number" id="inicio" placeholder="Início (s)" min="0" step="0.1">
+                <input type="number" id="fim" placeholder="Fim (s)" min="0" step="0.1">
+            </div>
+            <button onclick="usarPreview()">▶️ Testar corte antes de salvar</button>
+        </div>
+
+        <!-- ABA ÁUDIO -->
+        <div id="aba-audio" class="aba">
+            <p style="color:#aaa; font-size:14px; text-align:center;">Vai extrair o áudio do trecho selecionado acima</p>
+        </div>
+
+        <!-- ABA GIF -->
+        <div id="aba-gif" class="aba">
+            <div class="controles">
+                <input type="number" id="gifFps" placeholder="FPS" value="10" min="1" max="30">
+                <input type="number" id="gifLargura" placeholder="Largura" value="480" min="100">
+            </div>
+        </div>
+
+        <button id="processarBtn" onclick="processar()" disabled>Processar</button>
+        <a id="downloadBtn" class="btn-download">Baixar Arquivo</a>
+
+        <p id="status">Selecione um vídeo pra começar</p>
+    </div>
+
+    <script>
+        const { createFFmpeg, fetchFile } = FFmpeg;
+        const ffmpeg = createFFmpeg({ log: true });
+        let videoFile;
+        let abaAtual = 'corte';
+
+        const inputVideo = document.getElementById('inputVideo');
+        const preview = document.getElementById('preview');
+        const previewGif = document.getElementById('previewGif');
+        const processarBtn = document.getElementById('processarBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const status = document.getElementById('status');
+
+        inputVideo.addEventListener('change', (e) => {
+            videoFile = e.target.files[0];
+            if (videoFile) {
+                preview.src = URL.createObjectURL(videoFile);
+                preview.style.display = 'block';
+                previewGif.style.display = 'none';
+                preview.onloadedmetadata = () => {
+                    document.getElementById('inicio').value = 0;
+                    document.getElementById('fim').value = preview.duration.toFixed(1);
+                    processarBtn.disabled = false;
+                    status.innerText = `Vídeo: ${preview.duration.toFixed(1)}s`;
+                };
+            }
+        });
+
+        function mudarAba(aba) {
+            abaAtual = aba;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('ativo'));
+            document.querySelectorAll('.aba').forEach(a => a.classList.remove('ativa'));
+            event.target.classList.add('ativo');
+            document.getElementById('aba-' + aba).classList.add('ativa');
+
+            if (aba === 'corte') processarBtn.innerText = 'Cortar Vídeo';
+            if (aba === 'audio') processarBtn.innerText = 'Extrair Áudio MP3';
+            if (aba === 'gif') processarBtn.innerText = 'Criar GIF';
+        }
+
+        function usarPreview() {
+            const inicio = parseFloat(document.getElementById('inicio').value) || 0;
+            const fim = parseFloat(document.getElementById('fim').value) || preview.duration;
+            preview.currentTime = inicio;
+            preview.play();
+            setTimeout(() => preview.pause(), (fim - inicio) * 1000);
+        }
+
+        async function processar() {
+            if (!ffmpeg.isLoaded()) {
+                status.innerText = 'Carregando motor... primeira vez demora 20s';
+                await ffmpeg.load();
+            }
+
+            const inicio = document.getElementById('inicio').value || 0;
+            const fim = document.getElementById('fim').value || preview.duration;
+
+            if (parseFloat(inicio) >= parseFloat(fim)) {
+                alert('Início deve ser menor que o fim');
+                return;
+            }
+
+            processarBtn.disabled = true;
+            downloadBtn.style.display = 'none';
+            status.innerText = 'Processando... não fecha a página';
+
+            ffmpeg.FS('writeFile', 'input.mp4', await fetchFile(videoFile));
+            let outputName, mimeType;
+
+            if (abaAtual === 'corte') {
+                outputName = 'video-cortado.mp4';
+                mimeType = 'video/mp4';
+                await ffmpeg.run('-i', 'input.mp4', '-ss', `${inicio}`, '-to', `${fim}`, '-c', 'copy', outputName);
+            }
+            else if (abaAtual === 'audio') {
+                outputName = 'audio-extraido.mp3';
+                mimeType = 'audio/mp3';
+                await ffmpeg.run('-i', 'input.mp4', '-ss', `${inicio}`, '-to', `${fim}`, '-q:a', '0', '-map', 'a', outputName);
+            }
+            else if (abaAtual === 'gif') {
+                outputName = 'animacao.gif';
+                mimeType = 'image/gif';
+                const fps = document.getElementById('gifFps').value || 10;
+                const largura = document.getElementById('gifLargura').value || 480;
+                await ffmpeg.run('-i', 'input.mp4', '-ss', `${inicio}`, '-to', `${fim}`, '-vf', `fps=${fps},scale=${largura}:-1:flags=lanczos`, outputName);
+                preview.style.display = 'none';
+                previewGif.style.display = 'block';
+            }
+
+            const data = ffmpeg.FS('readFile', outputName);
+            const url = URL.createObjectURL(new Blob([data.buffer], { type: mimeType }));
+
+            if (abaAtual === 'gif') previewGif.src = url;
+
+            downloadBtn.href = url;
+            downloadBtn.download = outputName;
+            downloadBtn.style.display = 'block';
+            processarBtn.disabled = false;
+            status.innerText = 'Pronto! Clica pra baixar';
+        }
+    </script>
+</body>
+</html>
